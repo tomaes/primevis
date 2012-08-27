@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+
+<html>
+
+  <!--
+  
+   * HTML 5 example, using the <canvas> element, Javascript and Web Workers to visualize the distribution of prime numbers.
+   * last update: 08/2012
+   
+   by Thomas Gruetzmacher (http://tomaes.32x.de)   
+   licence: public domain 
+  
+  
+  -->
+
+  <head>
+  
+	<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+	
+	<title>Prime Numbers Distribution Visualization v1</title>
+	
+	<style type="text/css">
+	
+		body 	 { text-align: left; margin-top: 10px; margin-left: 100px; background: #EAEAEA; 
+		           padding: 0px; font-family: monospace; font-size: 16px; }
+				   
+		div 	 { margin-top: 10px; }
+		
+		#warning { background:#FAA; border-bottom: 1px solid #000; padding: 10px; }
+		#options:hover { background: #E5E5E5; }
+		
+		#header  { font-family: verdana, sans-serif; font-size: 20px; }
+		
+		#start 	 { width: 100px; height: 50px; margin-bottom: 40px; margin-top: 10px; font-size: 100%; }		
+		#info 	 { background: #DDE; border-radius: 3px; line-height: 140%; width: 80%; 
+				   max-width: 790px; margin-top: 20px; border-bottom: 1px solid #AAA; padding: 10px; text-shadow: 1px 1px #EEE; }
+				   
+		#options { margin: 10px; width: 510px; border: 1px solid #CCC; border-radius: 5px; padding: 10px; }		
+		#button  { position: relative; top: -70px; left: 560px; width: 150px; }
+		#txtinp  { padding: 4px; margin-right: 20px; }
+		#legend  { margin-bottom: 30px; font-size: 14px; }
+		#starttxt{ background: white; padding: 5px; border-radius: 3px; border: 0px solid #68A; color: #11F; }
+		
+		#primeyes{ background: white; padding: 3px; border-radius: 3px; box-shadow: 1px 1px #AAA; }
+		#primeno { background: #BBB;  padding: 3px; border-radius: 3px; box-shadow: 1px 1px #AAA; }	
+		#number  { background: #DDD;  padding: 3px; border-radius: 3px; box-shadow: 1px 1px #AAA; }
+		
+		#prime_iso  { background: #FFF; border: 1px solid #AAA; margin-left: 10px; cursor: default; }
+		#prime_twin { background: #44F; border: 1px solid #AAA; margin-left: 10px; cursor: default; }
+		#prime_none { background: #334; border: 1px solid #AAA; margin-left: 10px; cursor: default; }
+		
+		#canvas1 { background: #334; border: 2px solid #AAA; padding: 3px; box-shadow: 4px 4px #DDE; }			
+		
+		#credits { color: grey; cursor: default; text-align: left; font-family: verdana; font-size: 70%; }
+	
+	</style>
+
+	<script type="text/javascript">
+
+		// vvv those need to go into calcPrimes.js
+		// ----------------------------------------------------------------------------------------
+		var primeBuffer = new Array();
+	
+		// checks if parameter is prime; returns 0 if not and a positive, natural number otherwise.
+		function isPrime( p )
+		{
+			isprime = 1;
+			
+			if (p == 2) 
+				isprime = 1;
+			else
+				if ( p < 2 || !(p % 2) ) isprime = 0;
+			else
+				for( i = 3; (i <= Math.sqrt(p)) && (isprime = p % i); i += 2 );
+			
+			return isprime;
+		}
+	
+		// fill array with primes from natural numbers range (start..end)
+		function fillPrimeBuffer(start, end)
+		{
+			for(l = start; l < end; l++)
+			{
+				if (isPrime(l)) primeBuffer.push(l);
+			}			
+		}
+		// ----------------------------------------------------------------------------------------
+		
+		// blit a part of the primeBuffer onto a canvas
+		function blitToCanvas(start, end, _imgData)
+		{
+			
+			 for( m = start; m < end; m++ )
+			 {			 
+				// isolated prime?
+				if ( primeBuffer[m - 1] == (primeBuffer[m] - 2) || 
+					 primeBuffer[m + 1] == (primeBuffer[m] + 2) )
+				{
+					b = a = 255;
+					r = g = 150;
+				}
+				else
+				{
+					r = g = b = 255; 
+					a = 255; 				
+				}
+				
+				offset = primeBuffer[m] * 4;
+				_imgData.data[offset + 0] = r;
+				_imgData.data[offset + 1] = g;
+				_imgData.data[offset + 2] = b;
+				_imgData.data[offset + 3] = a;
+			 }
+
+			 return _imgData;
+		}
+		
+		// onload() stuff
+		function init()
+		{
+			// ...
+		}
+		
+		
+		function showPrimeVis()
+		{			
+			var myCanvas = document.getElementById('canvas1');
+			
+			customWidth  = document.getElementsByTagName("input")[0].value;
+			customHeight = document.getElementsByTagName("input")[1].value;
+			
+			if ( isNaN(customWidth) || isNaN(customHeight) || customWidth <= 0 || customHeight <= 0 )
+			{
+				alert("Invalid input. Please use natural numbers bigger than 0 only.");
+				return;
+			}
+			
+			myCanvas.width  = customWidth;
+			myCanvas.height = customHeight;
+			pixelCount = myCanvas.width * myCanvas.height;			
+					
+			
+			// Warning: possible overload.
+			if (customWidth * customHeight > 1000000)
+			{
+				alert( "Depending on your hardware and browser, this could take a while. Please stand by. :)" );
+			}
+								
+			if (!myCanvas.getContext) 
+			{
+				alert("Error: Could not get canvas context. Weird.");
+				return;
+			}
+
+			var context = myCanvas.getContext('2d');
+			
+			imgData = context.createImageData( myCanvas.width, myCanvas.height );
+					
+			// Calc primes one pixel line at a time
+			// ...and show progess (which, unfortunately, only works in Opera so far)
+			/*
+			for( n = 0; n < myCanvas.height; n++ )
+			{
+				fillPrimeBuffer( n * myCanvas.width, n * myCanvas.width + myCanvas.width );
+				document.getElementById('info').innerHTML = "Number crunching in progess: " + n + "/" + myCanvas.height;
+			}
+			*/
+			
+			
+			var calcStart = 0;			
+			var calcEnd   = pixelCount;
+			var lastPrime = primeBuffer[ primeBuffer.length-1 ] || 0;
+					
+			
+					
+			if ( calcEnd > lastPrime )
+			{
+				calcStart = lastPrime + 1;
+				
+				// TEST: web worker version. calc primes in multiple threads
+				if ( document.getElementById("cbWebWorker").checked ) 
+				{
+					if ( !window.Worker ) 
+						alert("Your browser does not support Web Workers.");
+					else
+					{
+						// split what's left to calc
+						var start1 = calcStart; 
+						var end1   = start1 + (calcEnd - calcStart) / 2;
+						
+						var start2 = end1 + 1;
+						var end2   = calcEnd;
+						
+						// init workers
+						var worker1 = new Worker('calcPrimes.js');
+						var worker2 = new Worker('calcPrimes.js');
+
+						worker1.postMessage( start1, end1 );
+						worker2.postMessage( start2, end2 );
+						
+						// ^^ need to send msg when finished -> join separate, local buffers -> terminate threads -> blit results
+						
+						// primeBuffer = []; primeBuffer = buffer1.concat( buffer2 );
+						
+						//worker1.terminate();
+						//worker2.terminate();						
+					}
+					
+				}
+				// normal, single-threaded version. calc not yet buffered primes in one block.
+				else
+				{			
+					fillPrimeBuffer( calcStart, calcEnd );
+				}				
+			}	
+			else
+			{
+				//alert("Using cached results! -> calcEnd: " + calcEnd + " | lastPrime: " + lastPrime );
+			}
+
+
+			imgData = blitToCanvas( 0, pixelCount, imgData );
+			
+			// blit results
+			context.putImageData( imgData, 0, 0 ); 						
+			
+			document.getElementById('info').innerHTML = 
+			    "Finished calculating."  
+				+ "<ul><li> Primes buffered: " + primeBuffer.length + "</li>"
+				+ "<li> Primes in buffered range: " + Math.round((primeBuffer.length / primeBuffer[ primeBuffer.length-1 ]) * 100.0 * 10) / 10 + "% </li>"
+				+ "<li> Shown range: 0.." + myCanvas.width * myCanvas.height + ". </li>"
+				+ "</ul> Move your mouse on the canvas for more info.";
+		
+			// hover over the finished canvas to get some extra infos
+			myCanvas.addEventListener
+			('mousemove', 
+				function (e) 
+				{
+					var x = e.pageX - myCanvas.offsetLeft - 4;
+					var y = e.pageY - myCanvas.offsetTop  - 4;
+					
+					x = (x < 0) ? 0 : (x > myCanvas.width)  ? myCanvas.width  : x;
+					y = (y < 0) ? 0 : (y > myCanvas.height) ? myCanvas.height : y;
+					
+					var str = "Number: <span id=\"number\">" + (x + myCanvas.width * y) + "</span> (x: " + x + ", y: " + y + ")  " 
+					        + "Prime: " + ((isPrime(x + myCanvas.width * y) > 0) ? "<span id=\"primeyes\"> YES! </span>" : "<span id=\"primeno\"> No </span>");
+
+					document.getElementById("info").innerHTML = str;
+				}, 0
+			);
+		}
+	  
+	  
+	  
+    </script>
+ 	<noscript>
+		Your browser either does not support JavaScript, or has JavaScript turned off.
+	</noscript> 
+	
+  </head>
+
+  <!---------------------------------------------------------------------------------------------------------------->    
+  
+  <body onload="init()">
+  
+  <!--[if lt IE 10]>
+  
+	<div id="warning">
+		<b>Please note:</b> This HTML5 demonstration is using up to date web technologies (as of 2012)
+		that your web browser does not support very well or not at all.
+	</div>
+	
+  <![endif]-->
+
+		<h1 id="header">A simple visualization of<br /> prime numbers distribution.</h1>
+		<p  id="info">Press <span id="starttxt">Start</span> below for some number crunching.</p>
+
+		<div>
+			<canvas id="canvas1" width="800" height="400">
+				<p>Your browser does not support the <b>canvas</b> HTML element.</p>
+			</canvas>
+		</div>
+		
+		<div>
+			<div id="legend">
+				<span id="prime_iso" > &nbsp;&nbsp;</span> isolated
+				<span id="prime_twin"> &nbsp;&nbsp;</span> twin
+				<span id="prime_none"> &nbsp;&nbsp;</span> no prime
+			</div>
+		</div>
+			
+		<div>
+			<div id="options">
+				Width:  <input id="txtinp" type="text" name="tWidth"  size="5" value="800" />
+				Height: <input id="txtinp" type="text" name="tHeight" size="5" value="400" />
+				<input id="cbWebWorker" type="checkbox" name="cbWebWorker" /> Use Web Worker
+			</div>		
+			<div id="button">
+				<input id="start" type="button" name="bStart" value="Start" onclick="document.getElementById('info').innerHTML = 'Processing. Please stand by...'; setTimeout('showPrimeVis();', 200); " />
+			</div>
+		</div>
+
+		<div id="credits">
+			HTML5 / Javascript Example App by Thomas '<a href="http://tomaes.32x.de">tomaes</a>' Gruetzmacher, 08 / 2012
+		</div>
+		
+  </body>
+
+  
+</html>
